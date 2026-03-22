@@ -8,44 +8,36 @@ A production-grade, real-time streaming pipeline that ingests live world-wide po
 
 ```mermaid
 graph TD
-    subgraph "Data Ingestion"
-        A[OpenWeatherMap API] -->|GET JSON| B[Kafka Producer]
-        S[Simulated Sensors] -->|Random Jitter| B
+    subgraph "Decision & Intelligence Layer"
+        G1 -->|Analyze| DE[Decision Engine]
+        DE -->|Generate| I[AI Insights]
+        DE -->|Trigger| J[Real-Time Alerts]
     end
 
-    subgraph "Messaging Layer"
-        B -->|Publish| C[Kafka Topic: 'raw-aqi']
-    end
-
-    subgraph "Processing Layer (Spark / Python)"
-        C -->|Consume| D[Stream Processor]
-        D -->|5-Min Windowing| E[AQI Calculation]
-        E -->|Aggregation| F[Trend Detection]
-        F -->|Rolling History| G[ML Predictor]
-        G -->|GradientBoosting| G1[Predicted AQI]
-    end
-
-    subgraph "Presentation Layer (Dashboard)"
-        G1 -->|Socket.IO Push| H[Flask-SocketIO Server]
-        H -->|Live Stream| I[Live Dashboard UI]
+    subgraph "Modern App Presentation"
+        I -->|Socket.IO| K[Dashboard Overview]
+        J -->|Socket.IO| L[Insights Deep-Dive]
     end
 
     style B fill:#3b82f6,color:#fff
     style C fill:#ef4444,color:#fff
     style D fill:#22c55e,color:#fff
     style G fill:#a855f7,color:#fff
-    style I fill:#06b6d4,color:#fff
+    style DE fill:#f59e0b,color:#fff
+    style K fill:#06b6d4,color:#fff
+    style L fill:#06b6d4,color:#fff
 ```
 
 ---
 
 ## 🚀 Key Improvements & Features
 
-*   **⚡ Instant History Pre-Fill**: The dashboard starts with a **full 20-minute graph** immediately (no more starting from an empty chart).
-*   **🤖 Startup AI Predictions**: The `GradientBoostingRegressor` model is active from the first second of operation.
-*   **🎭 Demo Mode Switch**: An on-screen toggle to switch between **Accurate API Data** and **Dramatic Simulation** (fixes the "flat line" problem for better visual demonstrations).
-*   **📡 Hybrid Pipeline**: Supports both **Pure-Python Simulation** (1 terminal) and **Full Kafka/Spark Infrastructure** (3 terminals).
-*   **📈 Smart Trend Detection**: Real-time slope calculation to see if pollution is rising or falling over the last 5 minutes.
+*   **🧠 Intelligent Decision Engine**: Isolated `utils/decision_engine.py` generates priority-based **AI Insights** and **Real-Time Alerts** (spikes, threshold crossings).
+*   **📱 Modern App-Style UI**: A full-screen, card-based dashboard with a 2-page layout: **Dashboard Overview** (for all cities) and **Detailed Insights** (single-city deep-dive).
+*   **🚗 Traffic & Health Simulation**: Injected `Traffic Impact` (Low/Medium/High) and `Health Advisories` (EPA-aligned) for actionable data.
+*   **🎭 Demo Mode Switch**: On-screen toggle for high-variance testing (fixes "flat lines").
+*   **🤖 Startup AI Predictions**: Full history pre-filling with active `GradientBoosting` from second zero.
+*   **📈 Smart Trend Detection**: Real-time slope calculation of particulate matter.
 
 ---
 
@@ -149,8 +141,9 @@ LIVE_AQI/
 ├── config/             ← Central settings (Cities, Kafka ports, Simulation flag)
 ├── producer/           ← Sensor data generator (API & Simulation modes)
 ├── spark/              ← Streaming logic (Kafka consumers and data processing)
-├── ml/                 ← ML Training (`aqi_predictor.py`) and Inference Engine
-├── dashboard/          ← Flask + SocketIO backend & Frontend UI
+├── ml/                 ← ML Training and Inference Engine
+├── utils/              ← Modular helpers (Decision Engine, logic)
+├── dashboard/          ← Flask + SocketIO backend & Modern JS Frontend
 ├── docker-compose.yml  ← Infrastructure (Kafka, Zookeeper, Spark UI)
 ├── requirements.txt    ← Python dependencies
 └── whatfixed.md        ← Technical log of solved engineering challenges

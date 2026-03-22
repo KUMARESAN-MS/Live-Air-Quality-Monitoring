@@ -27,6 +27,7 @@ from config.settings import (
 )
 from producer.aqi_producer import generate_reading
 from ml.predict import predict_next_hour
+from utils.decision_engine import generate_insight, generate_alert
 
 
 # ─── Shared state (read by the dashboard) ────────────────────────────────────
@@ -77,6 +78,8 @@ def _process_reading(reading: dict):
     _aqi_histories[city].append(aqi)
 
     trend     = detect_trend(list(_aqi_histories[city]))
+    insight   = generate_insight(list(_aqi_histories[city]), aqi, trend)
+    alert     = generate_alert(aqi, list(_aqi_histories[city]))
     next_hour = predict_next_hour(list(_histories[city])) or round(aqi * 1.05, 1)
     next_cat  = aqi_category(next_hour)
 
@@ -91,7 +94,11 @@ def _process_reading(reading: dict):
         "co":              round(reading.get("co", 0), 3),
         "category":        cat["label"],
         "css_class":       cat["css"],
+        "health_advisory": cat.get("health_advisory", ""),
         "trend":           trend,
+        "insight":         insight,
+        "alert":           alert,
+        "traffic":         reading.get("traffic", "Unknown"),
         "next_hour_aqi":   next_hour,
         "next_hour_label": next_cat["label"],
         "next_hour_css":   next_cat["css"],

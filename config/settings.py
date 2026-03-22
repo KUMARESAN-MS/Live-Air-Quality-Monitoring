@@ -70,12 +70,12 @@ PM25_BREAKPOINTS: list[tuple] = [
     (350.5, 500.4, 401, 500),
 ]
 
-# ─── AQI Category Labels & CSS Classes ───────────────────────────────────────
+# ─── AQI Category Labels, CSS Classes & Health Advisories ────────────────────
 AQI_CATEGORIES: list[dict] = [
-    {"max": 50,  "label": "Good",                         "css": "good"},
-    {"max": 100, "label": "Moderate",                     "css": "moderate"},
-    {"max": 150, "label": "Unhealthy for Sensitive",      "css": "sensitive"},
-    {"max": 200, "label": "Unhealthy",                    "css": "unhealthy"},
-    {"max": 300, "label": "Very Unhealthy",               "css": "very-unhealthy"},
-    {"max": 999, "label": "Hazardous",                    "css": "hazardous"},
+    {"max": 50,  "label": "Good",                    "css": "good",           "health_advisory": "Air quality is satisfactory. Enjoy outdoor activities!"},
+    {"max": 100, "label": "Moderate",                 "css": "moderate",       "health_advisory": "Sensitive individuals should consider reducing prolonged outdoor exertion."},
+    {"max": 150, "label": "Unhealthy for Sensitive",  "css": "sensitive",      "health_advisory": "Children and people with respiratory diseases should limit outdoor exertion."},
+    {"max": 200, "label": "Unhealthy",                "css": "unhealthy",      "health_advisory": "Everyone may experience health effects. Wear a mask outdoors."},
+    {"max": 300, "label": "Very Unhealthy",           "css": "very-unhealthy", "health_advisory": "Health warnings of emergency conditions. Avoid outdoor activities."},
+    {"max": 999, "label": "Hazardous",                "css": "hazardous",      "health_advisory": "Health alert: stay indoors, keep windows closed, use air purifiers."},
 ]

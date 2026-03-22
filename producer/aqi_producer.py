@@ -56,6 +56,15 @@ def _time_multiplier() -> float:
     return random.uniform(0.85, 1.10)
 
 
+def _simulate_traffic(hour: int) -> str:
+    """Simulate traffic volume based on time-of-day. Does NOT affect AQI values."""
+    if 7 <= hour <= 10 or 17 <= hour <= 20:
+        return "High"
+    if 2 <= hour <= 5:
+        return "Low"
+    return "Medium"
+
+
 def fetch_real_aqi(city: str) -> dict:
     """Fetch live air pollution data from OpenWeatherMap."""
     if not OPENWEATHER_API_KEY:
@@ -88,6 +97,7 @@ def fetch_real_aqi(city: str) -> dict:
             "o3":        jitter(comp.get("o3", 0.0), 0.05),
             "co":        round(jitter(comp.get("co", 0.0), 0.04) / 1000, 3) if "co" in comp else 0.0,
             "so2":       jitter(comp.get("so2", 0.0), 0.05),
+            "traffic":   _simulate_traffic(datetime.now().hour),
             "source":    "OpenWeatherMap"
         }
     except Exception as e:
@@ -136,6 +146,7 @@ def generate_reading(city: str, force_sim: bool = False) -> dict:
         "o3":        sample("o3"),
         "co":        round(sample("co"), 3),
         "so2":       sample("so2"),
+        "traffic":   _simulate_traffic(datetime.now().hour),
     }
 
 

@@ -1,300 +1,265 @@
-/**
- * dashboard/static/dashboard.js
- * ──────────────────────────────
- * WebSocket client + Chart.js live chart for the AQI dashboard.
- */
+const socket = io();
 
-// ── State ─────────────────────────────────────────────────────────────────────
-const cityData      = {};   // city → latest payload
-let   selectedCity  = null;
-let   updateCount   = 0;
-let   chart         = null;
+// ── State ───────────────────────────────────────────────────────────────────
+let allCitiesData = {};
+let selectedCity = null;
+let aqiChart = null;
 
-// ── Chart colours per city (cycles if more than 8 cities) ────────────────────
-const CHART_COLORS = [
-  "#3b82f6","#22c55e","#f97316","#a855f7",
-  "#ef4444","#eab308","#06b6d4","#ec4899",
-];
-const cityColorMap = {};
-let colorIndex = 0;
-function getCityColor(city) {
-  if (!cityColorMap[city]) {
-    cityColorMap[city] = CHART_COLORS[colorIndex++ % CHART_COLORS.length];
-  }
-  return cityColorMap[city];
-}
-
-// ── AQI CSS class helper ──────────────────────────────────────────────────────
-function cssClass(cssFromServer) {
-  // Server sends css_class like "very-unhealthy" — pass through directly
-  return cssFromServer || "good";
-}
-
-// ── Smooth number counter animation ──────────────────────────────────────────
-function animateNumber(el, from, to, duration = 500) {
-  const start = performance.now();
-  function step(now) {
-    const t    = Math.min((now - start) / duration, 1);
-    const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
-    el.textContent = Math.round(from + (to - from) * ease);
-    if (t < 1) requestAnimationFrame(step);
-  }
-  requestAnimationFrame(step);
-}
-
-// ── Build / update a city card ────────────────────────────────────────────────
-function upsertCard(d) {
-  const prevAqi = cityData[d.city]?.aqi ?? d.aqi;
-  cityData[d.city] = d;
-
-  const cat = cssClass(d.css_class);
-  let card  = document.getElementById(`card-${d.city.replace(/\s+/g, "-")}`);
-
-  if (!card) {
-    // ── Create card DOM ────────────────────────────────────────────────────
-    card = document.createElement("div");
-    card.className = `city-card ${cat}`;
-    card.id        = `card-${d.city.replace(/\s+/g, "-")}`;
-    const sourceLabel = d.source || "Simulation";
-    card.innerHTML = `
-      <div class="card-header">
-        <span class="city-name">${d.city} <small style="font-size: 0.6em; opacity: 0.6;">(${sourceLabel})</small></span>
-        <span class="trend-badge" id="trend-${d.city}"></span>
-      </div>
-      <div class="aqi-value ${cat}" id="aqi-${d.city}">${d.aqi.toFixed(1)}</div>
-      <div class="category-badge ${cat}" id="cat-${d.city}">${d.category}</div>
-      <div class="pollutants">
-        <div class="chip">PM2.5 <span id="pm25-${d.city}">${d.pm25}</span></div>
-        <div class="chip">PM10 <span id="pm10-${d.city}">${d.pm10}</span></div>
-        <div class="chip">NO₂ <span id="no2-${d.city}">${d.no2}</span></div>
-        <div class="chip">O₃ <span id="o3-${d.city}">${d.o3}</span></div>
-      </div>
-      <div class="prediction-row">
-        <span class="pred-label">⏱ Next Hour</span>
-        <div>
-          <span class="pred-value ${cssClass(d.next_hour_css)}" id="pred-${d.city}">${d.next_hour_aqi}</span>
-          <span class="pred-cat" id="predcat-${d.city}">${d.next_hour_label}</span>
-        </div>
-      </div>`;
-
-    document.getElementById("loader")?.remove();
-    document.getElementById("cardsContainer").appendChild(card);
-    addCityButton(d.city);
-
-  } else {
-    // ── Update existing card ───────────────────────────────────────────────
-    card.className = `city-card ${cat} updated`;
-    setTimeout(() => card.classList.remove("updated"), 600);
-
-    const aqiEl = document.getElementById(`aqi-${d.city}`);
-    aqiEl.className = `aqi-value ${cat}`;
-    animateNumber(aqiEl, prevAqi, d.aqi);
-
-    document.getElementById(`cat-${d.city}`).className = `category-badge ${cat}`;
-    document.getElementById(`cat-${d.city}`).textContent = d.category;
-
-    document.getElementById(`pm25-${d.city}`).textContent = d.pm25;
-    document.getElementById(`pm10-${d.city}`).textContent = d.pm10;
-    document.getElementById(`no2-${d.city}`).textContent  = d.no2;
-    document.getElementById(`o3-${d.city}`).textContent   = d.o3;
-
-    document.getElementById(`pred-${d.city}`).textContent    = d.next_hour_aqi;
-    document.getElementById(`pred-${d.city}`).className      = `pred-value ${cssClass(d.next_hour_css)}`;
-    document.getElementById(`predcat-${d.city}`).textContent = d.next_hour_label;
-  }
-
-  // ── Trend arrow ────────────────────────────────────────────────────────────
-  const trendEl    = document.getElementById(`trend-${d.city}`);
-  trendEl.textContent = d.trend;
-  trendEl.className = "trend-badge " +
-    (d.trend === "↑" ? "trend-up" : d.trend === "↓" ? "trend-down" : "trend-flat");
-}
-
-// ── Summary bar ───────────────────────────────────────────────────────────────
-function updateSummary(cities) {
-  if (!cities.length) return;
-  const sorted = [...cities].sort((a, b) => a.aqi - b.aqi);
-  document.getElementById("bestCity").textContent  = `${sorted[0].city} (${Math.round(sorted[0].aqi)})`;
-  document.getElementById("worstCity").textContent = `${sorted[sorted.length-1].city} (${Math.round(sorted[sorted.length-1].aqi)})`;
-  document.getElementById("cityCount").textContent  = cities.length;
-  document.getElementById("updateCount").textContent = ++updateCount;
-  document.getElementById("lastUpdated").textContent =
-    "Updated " + new Date().toLocaleTimeString();
-}
-
-// ── Chart ─────────────────────────────────────────────────────────────────────
+// ── Chart Initialization ────────────────────────────────────────────────────
 function initChart() {
-  const ctx  = document.getElementById("aqiChart").getContext("2d");
-  chart = new Chart(ctx, {
+  const ctx = document.getElementById("aqiChart").getContext("2d");
+  Chart.defaults.color = "#94a3b8";
+  Chart.defaults.font.family = "'Inter', sans-serif";
+  
+  aqiChart = new Chart(ctx, {
     type: "line",
     data: { labels: [], datasets: [] },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      animation: { duration: 400 },
-      scales: {
-        x: {
-          ticks: { color: "#4a5a7a", maxTicksLimit: 8, font: { size: 11 } },
-          grid:  { color: "rgba(255,255,255,0.04)" },
-        },
-        y: {
-          ticks: { color: "#4a5a7a", font: { size: 11 } },
-          grid:  { color: "rgba(255,255,255,0.06)" },
-          suggestedMin: 0, suggestedMax: 200,
-        },
-      },
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400, easing: 'easeOutQuart' },
+      interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { labels: { color: "#8899bb", font: { size: 12 } } },
+        legend: { display: false },
         tooltip: {
-          backgroundColor: "#0d1420",
-          borderColor: "rgba(255,255,255,0.12)", borderWidth: 1,
-          titleColor: "#f0f4ff", bodyColor: "#8899bb",
-        },
+          backgroundColor: "rgba(15,22,38,0.9)",
+          titleFont: { size: 13 },
+          bodyFont: { size: 14, weight: 'bold' },
+          padding: 12,
+          cornerRadius: 8,
+          displayColors: false
+        }
       },
-    },
-  });
-}
-
-function updateChart(citiesPayload) {
-  if (!chart) return;
-
-  const visibleCities = selectedCity ? [selectedCity] : Object.keys(cityData);
-  let maxLen = 0;
-
-  // Ensure a dataset exists per visible city
-  visibleCities.forEach(city => {
-    let ds = chart.data.datasets.find(d => d.label === city);
-    if (!ds) {
-      ds = {
-        label: city,
-        data: [],
-        borderColor: getCityColor(city),
-        backgroundColor: getCityColor(city) + "22",
-        pointRadius: 3,
-        tension: 0.35,
-        fill: true,
-        borderWidth: 2,
-      };
-      chart.data.datasets.push(ds);
-    }
-    const payload = citiesPayload.find(c => c.city === city);
-    if (payload && payload.history_aqi) {
-      ds.data = [...payload.history_aqi];
-    } else if (payload) {
-      ds.data.push(payload.aqi);
-      if (ds.data.length > 40) ds.data.shift();
-    }
-    if (ds.data.length > maxLen) maxLen = ds.data.length;
-  });
-
-  // Sync labels array to max length
-  if (chart.data.labels.length === 0 && maxLen > 0) {
-      // First load: backfill dummy labels
-      const now = new Date();
-      for (let i = maxLen - 1; i >= 0; i--) {
-          chart.data.labels.push(new Date(now.getTime() - i * 5000).toLocaleTimeString());
+      scales: {
+        x: { grid: { color: "rgba(255,255,255,0.05)" } },
+        y: { 
+          grid: { color: "rgba(255,255,255,0.05)" },
+          beginAtZero: true,
+          suggestedMax: 200
+        }
       }
-  } else {
-      // Normal update: shift labels if needed
-      if (maxLen > chart.data.labels.length) {
-          chart.data.labels.push(new Date().toLocaleTimeString());
-      } else if (maxLen > 0) {
-          chart.data.labels.shift();
-          chart.data.labels.push(new Date().toLocaleTimeString());
-      }
-      if (chart.data.labels.length > 40) {
-          chart.data.labels.shift();
-      }
-  }
-
-  // Remove datasets for deselected cities
-  chart.data.datasets = chart.data.datasets.filter(d =>
-    visibleCities.includes(d.label)
-  );
-
-  chart.update("none");
-}
-
-// ── City selector buttons ─────────────────────────────────────────────────────
-function addCityButton(city) {
-  const sel = document.getElementById("citySelector");
-  if (document.getElementById(`btn-${city}`)) return;
-
-  const btn = document.createElement("button");
-  btn.className = "city-btn";
-  btn.id        = `btn-${city}`;
-  btn.textContent = city;
-  btn.addEventListener("click", () => {
-    if (selectedCity === city) {
-      selectedCity = null;
-      btn.classList.remove("active");
-    } else {
-      document.querySelectorAll(".city-btn").forEach(b => b.classList.remove("active"));
-      selectedCity = city;
-      btn.classList.add("active");
-      // Reset chart to show only this city
-      chart.data.datasets = [];
-      chart.data.labels   = [];
     }
   });
-  sel.appendChild(btn);
 }
 
-// ── Socket.IO connection ──────────────────────────────────────────────────────
-function connect() {
-  const socket = io({ transports: ["websocket", "polling"] });
+// ── Render Logic ────────────────────────────────────────────────────────────
 
-  socket.on("connect", () => {
-    document.getElementById("liveBadge").style.opacity = "1";
-    console.log("[WS] Connected");
-  });
-
-  socket.on("disconnect", () => {
-    document.getElementById("liveBadge").style.opacity = "0.4";
-    document.getElementById("lastUpdated").textContent = "Reconnecting…";
-  });
-
-  socket.on("city_update", (cities) => {
-    cities.forEach(upsertCard);
-    updateSummary(cities);
-    updateChart(cities);
-  });
-}
-
-// ── Demo Mode Toggle ──────────────────────────────────────────────────────────
-function initDemoToggle() {
-  const btn = document.getElementById("demoModeToggle");
-  if (!btn) return;
-  let isDemo = false;
+// 1. Update the Main Dashboard Grid (Tab 1)
+function updateDashboardCards(cities) {
+  const container = document.getElementById("cityCardsContainer");
+  if(container.querySelector(".loader")) container.innerHTML = "";
   
-  btn.addEventListener("click", () => {
-    isDemo = !isDemo;
-    btn.textContent = `Demo Mode: ${isDemo ? "ON" : "OFF"}`;
-    btn.style.background = isDemo ? "rgba(239, 68, 68, 0.2)" : "rgba(255,255,255,0.1)";
-    btn.style.borderColor = isDemo ? "rgba(239, 68, 68, 0.5)" : "rgba(255,255,255,0.2)";
+  // Sort cities by severity automatically for overview
+  const sorted = [...cities].sort((a, b) => b.aqi - a.aqi);
+
+  sorted.forEach(city => {
+    let card = document.getElementById(`card-${city.city}`);
     
-    fetch("/api/mode", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ demo: isDemo })
-    }).catch(e => console.error("Mode toggle failed", e));
+    // Create card if missing
+    if(!card) {
+      card = document.createElement("div");
+      card.id = `card-${city.city}`;
+      card.className = "city-card";
+      
+      // Clicking a card jumps to Detailed Insights page
+      card.onclick = () => {
+        selectedCity = city.city;
+        document.getElementById("globalCitySelector").value = city.city;
+        switchTab("insightsTab");
+        refreshInsightsView();
+      };
+      
+      container.appendChild(card);
+    }
+    
+    // Update contents
+    card.className = `city-card ${city.css_class}`;
+    card.innerHTML = `
+      <div class="card-header">
+        <span class="city-name">${city.city}</span>
+        <span class="trend">${city.trend}</span>
+      </div>
+      <div class="aqi-value ${city.css_class}">${city.aqi}</div>
+      <div class="category-badge ${city.css_class}">${city.category}</div>
+      <div class="pollutants">
+        <span class="chip">PM2.5 <b>${city.pm25}</b></span>
+        <span class="chip">PM10 <b>${city.pm10}</b></span>
+      </div>
+    `;
   });
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
-  initDemoToggle();
-  initChart();
-  connect();
+// 2. Update the Insights view (Hero Card + Intel Grid) (Tab 2)
+function updateHeroAndIntel(cityData) {
+  // --- Hero Section ---
+  const aqiEl = document.getElementById("heroAqiValue");
+  const catEl = document.getElementById("heroCategory");
+  const timeEl = document.getElementById("heroTime");
+  const trendEl = document.getElementById("heroTrend");
+  
+  aqiEl.textContent = cityData.aqi;
+  aqiEl.className = `aqi-num ${cityData.css_class}`;
+  catEl.textContent = cityData.category;
+  catEl.className = `category-badge ${cityData.css_class}`;
+  trendEl.textContent = cityData.trend;
+  
+  if (cityData.trend === "↑") trendEl.className = "trend-icon trend-up";
+  else if (cityData.trend === "↓") trendEl.className = "trend-icon trend-down";
+  else trendEl.className = "trend-icon trend-flat";
+  
+  const d = new Date(cityData.timestamp);
+  timeEl.textContent = `Updated: ${d.toLocaleTimeString()}`;
 
-  // Fetch initial snapshot so cards appear immediately without waiting for push
-  fetch("/api/current")
-    .then(r => r.json())
-    .then(cities => {
-      if (cities.length) {
-        cities.forEach(upsertCard);
-        updateSummary(cities);
-        updateChart(cities);
-      }
-    })
-    .catch(() => {/* dashboard not ready yet */});
+  // --- Intel Grid ---
+  // AI Insight
+  document.getElementById("insightText").textContent = cityData.insight || "Waiting for data...";
+  
+  // Prediction
+  document.getElementById("predValue").textContent = cityData.next_hour_aqi;
+  document.getElementById("predValue").className = `focus-text ${cityData.next_hour_css}`;
+  document.getElementById("predLabel").textContent = " " + cityData.next_hour_label;
+  
+  // Traffic
+  const t = cityData.traffic || "Medium";
+  const trafficText = document.getElementById("trafficText");
+  const trafficIndicator = document.getElementById("trafficIndicator");
+  trafficText.textContent = t;
+  trafficText.className = `focus-text traffic-${t.toLowerCase()}`;
+  trafficIndicator.className = `traffic-dot traffic-${t.toLowerCase()}-dot`;
+  
+  // Alerts
+  const alertCard = document.getElementById("cardAlerts");
+  const alertEl = document.getElementById("alertText");
+  if(cityData.alert) {
+    alertEl.textContent = cityData.alert;
+    alertCard.classList.add("has-alert");
+  } else {
+    alertEl.textContent = "No active alerts";
+    alertCard.classList.remove("has-alert");
+  }
+  
+  // Health Advisory
+  document.getElementById("healthText").textContent = cityData.health_advisory || "—";
+}
+
+// 3. Update the line chart in Insights view
+function updateChart(cityData) {
+  if (!aqiChart) return;
+  const history = cityData.history_aqi || [];
+  
+  aqiChart.data.labels = history.map((_, i) => `-${history.length - i}`);
+  
+  // Create gradient
+  const ctx = aqiChart.canvas.getContext("2d");
+  const grad = ctx.createLinearGradient(0, 0, 0, 300);
+  
+  // Get CSS variable color based on category class
+  const dummyEl = document.createElement("div");
+  dummyEl.className = cityData.css_class;
+  document.body.appendChild(dummyEl);
+  let color = getComputedStyle(dummyEl).color;
+  document.body.removeChild(dummyEl);
+  if(!color || color === 'rgba(0, 0, 0, 0)') color = "#3b82f6";
+  
+  // Convert standard hex/rgb to rgba for gradient
+  grad.addColorStop(0, color.replace('rgb', 'rgba').replace(')', ', 0.25)'));
+  grad.addColorStop(1, "rgba(21, 27, 41, 0)");
+
+  aqiChart.data.datasets = [{
+    label: "AQI",
+    data: history,
+    borderColor: color,
+    backgroundColor: grad,
+    borderWidth: 3,
+    pointBackgroundColor: '#151b29',
+    pointBorderColor: color,
+    pointRadius: 0,
+    pointHoverRadius: 6,
+    fill: true,
+    tension: 0.4
+  }];
+  aqiChart.update();
+}
+
+function refreshInsightsView() {
+  if (selectedCity && allCitiesData[selectedCity]) {
+    updateHeroAndIntel(allCitiesData[selectedCity]);
+    updateChart(allCitiesData[selectedCity]);
+  }
+}
+
+// ── WebSockets ──────────────────────────────────────────────────────────────
+socket.on("city_update", (cities) => {
+  if (!cities || cities.length === 0) return;
+
+  // Stash data
+  cities.forEach(c => { allCitiesData[c.city] = c; });
+  
+  // Populate dropdown once
+  const sel = document.getElementById("globalCitySelector");
+  if (sel.options.length === 0) {
+    cities.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.city;
+      opt.textContent = c.city;
+      sel.appendChild(opt);
+    });
+    // Set initial selection
+    selectedCity = cities.sort((a,b) => b.aqi - a.aqi)[0].city;
+    sel.value = selectedCity;
+  }
+  
+  updateDashboardCards(cities);
+  
+  if (document.getElementById("insightsTab").classList.contains("active")) {
+    refreshInsightsView();
+  }
 });
+
+
+// ── Event Listeners ─────────────────────────────────────────────────────────
+
+// Dropdown (only visible/used on Insights tab)
+document.getElementById("globalCitySelector").addEventListener("change", (e) => {
+  selectedCity = e.target.value;
+  refreshInsightsView();
+});
+
+// Demo Mode Toggle
+document.getElementById("demoToggle").addEventListener("change", (e) => {
+  fetch("/toggle_demo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ demo_mode: e.target.checked })
+  });
+});
+
+// Tab Switcher
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", (e) => {
+    switchTab(e.target.dataset.target);
+  });
+});
+
+function switchTab(targetId) {
+  // Update buttons
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.querySelector(`[data-target="${targetId}"]`).classList.add("active");
+  
+  // Update content
+  document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+  document.getElementById(targetId).classList.add("active");
+  
+  // Toggle UI elements
+  const sel = document.getElementById("globalCitySelector");
+  if (targetId === "insightsTab") {
+    sel.style.display = "block";  // Show dropdown in top bar
+    refreshInsightsView();
+    if(aqiChart) setTimeout(() => aqiChart.resize(), 50); // Resize fix
+  } else {
+    sel.style.display = "none";   // Hide dropdown on dashboard home
+  }
+}
+
+// Boot
+initChart();
