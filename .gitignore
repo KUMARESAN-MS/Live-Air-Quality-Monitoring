@@ -1,0 +1,36 @@
+# Environments & Secrets
+.env
+venv/
+env/
+.venv/
+
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Live State & Generated Files
+config/mode.json
+ml/models/*.pkl
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing / Caching
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Spark / Data Logs
+derby.log
+metastore_db/
+spark-warehouse/
+/tmp/aqi_checkpoint/

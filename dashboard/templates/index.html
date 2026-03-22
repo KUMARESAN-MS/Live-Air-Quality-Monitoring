@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🌫️ Live Air Quality Monitor</title>
+  <meta name="description" content="Real-time air quality monitoring dashboard showing live AQI, trends and predictions for multiple cities." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">🌫️</span>
+        <div>
+          <h1>Live AQI Monitor</h1>
+          <p class="subtitle">Real-Time Air Quality Intelligence</p>
+        </div>
+      </div>
+      <div class="header-meta">
+        <button id="demoModeToggle" class="mode-btn" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8em; margin-right: 10px; transition: all 0.2s;">Demo Mode: OFF</button>
+        <div class="live-badge" id="liveBadge">
+          <span class="pulse-dot"></span> LIVE
+        </div>
+        <div class="last-updated" id="lastUpdated">Connecting…</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Summary bar ─────────────────────────────────────────────────────── -->
+  <section class="summary-bar">
+    <div class="stat-pill" id="statBest">
+      <span class="stat-label">🟢 Best City</span>
+      <span class="stat-value" id="bestCity">—</span>
+    </div>
+    <div class="stat-pill" id="statWorst">
+      <span class="stat-label">🔴 Worst City</span>
+      <span class="stat-value" id="worstCity">—</span>
+    </div>
+    <div class="stat-pill">
+      <span class="stat-label">📊 Cities Tracked</span>
+      <span class="stat-value" id="cityCount">0</span>
+    </div>
+    <div class="stat-pill">
+      <span class="stat-label">⚡ Updates</span>
+      <span class="stat-value" id="updateCount">0</span>
+    </div>
+  </section>
+
+  <!-- ── City cards grid ─────────────────────────────────────────────────── -->
+  <main class="cards-container" id="cardsContainer">
+    <div class="loader" id="loader">
+      <div class="spinner"></div>
+      <p>Connecting to live data stream…</p>
+    </div>
+  </main>
+
+  <!-- ── Chart section ───────────────────────────────────────────────────── -->
+  <section class="chart-section">
+    <div class="chart-header">
+      <h2>📈 AQI History</h2>
+      <div class="city-selector" id="citySelector"></div>
+    </div>
+    <div class="chart-wrapper">
+      <canvas id="aqiChart"></canvas>
+    </div>
+  </section>
+
+  <!-- ── AQI Legend ──────────────────────────────────────────────────────── -->
+  <section class="legend-section">
+    <h3>AQI Reference Scale</h3>
+    <div class="legend-grid">
+      <div class="legend-item good">         <span class="l-range">0–50</span>   <span class="l-label">Good</span> </div>
+      <div class="legend-item moderate">     <span class="l-range">51–100</span> <span class="l-label">Moderate</span> </div>
+      <div class="legend-item sensitive">    <span class="l-range">101–150</span><span class="l-label">Sensitive Groups</span> </div>
+      <div class="legend-item unhealthy">    <span class="l-range">151–200</span><span class="l-label">Unhealthy</span> </div>
+      <div class="legend-item very-unhealthy"><span class="l-range">201–300</span><span class="l-label">Very Unhealthy</span></div>
+      <div class="legend-item hazardous">    <span class="l-range">300+</span>   <span class="l-label">Hazardous</span> </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <p>Real-Time AQI Monitor · Powered by Kafka + Spark Streaming + ML Prediction · &copy; 2026</p>
+  </footer>
+
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
