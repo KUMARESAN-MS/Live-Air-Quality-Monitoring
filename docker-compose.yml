@@ -1,5 +1,9 @@
 version: "3.9"
 
+volumes:
+  aqi-data:
+    driver: local
+
 services:
 
   zookeeper:
@@ -82,10 +86,12 @@ services:
         condition: service_started
     volumes:
       - .:/app
+      - aqi-data:/app/data
     working_dir: /app
     environment:
       - PYTHONPATH=/app
       - KAFKA_BROKER=kafka:9092
+      - DB_PATH=/app/data/aqi_readings.db
     command: >
       /opt/spark/bin/spark-submit 
       --master spark://spark-master:7077

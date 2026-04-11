@@ -1,36 +1,81 @@
-# Environments & Secrets
+# ─── Secrets & API Keys ──────────────────────────────────────────────────────
+# NEVER commit API keys or secrets
 .env
+.env.local
+.env.production
+*.key
+*.pem
+*.crt
+
+# ─── Virtual Environments ────────────────────────────────────────────────────
 venv/
+venv311/
 env/
 .venv/
+.python-version
 
-# Python compiled files
+# ─── Python Compiled Files ───────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
 
-# Live State & Generated Files
+# ─── Live State & Generated Files ────────────────────────────────────────────
 config/mode.json
+config/active_cities.json
+
+# ─── ML Models (large binary, regenerated on startup) ────────────────────────
 ml/models/*.pkl
+ml/models/*.joblib
 
-# IDE / Editor
-.vscode/
-.idea/
-*.swp
-*.swo
+# ─── Database (local data, regenerated at runtime) ───────────────────────────
+data/
+*.db
+*.sqlite
+*.sqlite3
 
-# Testing / Caching
-.pytest_cache/
-.coverage
-htmlcov/
+# ─── Hadoop Binaries (Windows-only, downloaded by setup script) ──────────────
+hadoop/bin/
 
-# OS specific
-.DS_Store
-Thumbs.db
-
-# Spark / Data Logs
+# ─── Spark / Streaming State ─────────────────────────────────────────────────
 derby.log
 metastore_db/
 spark-warehouse/
 /tmp/aqi_checkpoint/
+*.checkpoint/
+
+# ─── Log Files & Misc Text Files ─────────────────────────────────────────────
+*.log
+*.txt
+!requirements.txt
+
+# ─── IDE / Editor ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ─── Testing / Coverage ─────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# ─── OS Specific ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# ─── Gemini / AI Tools ──────────────────────────────────────────────────────
+.gemini/

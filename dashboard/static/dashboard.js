@@ -49,8 +49,8 @@ function updateDashboardCards(cities) {
   const container = document.getElementById("cityCardsContainer");
   if(container.querySelector(".loader")) container.innerHTML = "";
   
-  // Sort cities by severity automatically for overview
-  const sorted = [...cities].sort((a, b) => b.aqi - a.aqi);
+  // Sort cities by priority score (worst-first)
+  const sorted = [...cities].sort((a, b) => (b.priority?.score || 0) - (a.priority?.score || 0));
 
   sorted.forEach(city => {
     let card = document.getElementById(`card-${city.city}`);
@@ -73,11 +73,13 @@ function updateDashboardCards(cities) {
     }
     
     // Update contents
+    const pri = city.priority || {};
+    const priBadge = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}[pri.priority] || "⚪";
     card.className = `city-card ${city.css_class}`;
     card.innerHTML = `
       <div class="card-header">
         <span class="city-name">${city.city}</span>
-        <span class="trend">${city.trend}</span>
+        <span class="priority-badge" title="Priority: ${pri.priority || 'unknown'}">${priBadge}</span>
       </div>
       <div class="aqi-value ${city.css_class}">${city.aqi}</div>
       <div class="category-badge ${city.css_class}">${city.category}</div>
@@ -110,14 +112,16 @@ function updateHeroAndIntel(cityData) {
   const d = new Date(cityData.timestamp);
   timeEl.textContent = `Updated: ${d.toLocaleTimeString()}`;
 
-  // --- Intel Grid ---
-  // AI Insight
-  document.getElementById("insightText").textContent = cityData.insight || "Waiting for data...";
+  // --- Intel Grid (Structured Messages) ---
+  const msg = cityData.message || {};
+
+  // AI Insight (now uses structured message)
+  document.getElementById("insightText").textContent = msg.summary || cityData.insight || "Waiting for data...";
   
-  // Prediction
+  // Prediction (uses structured prediction_note)
   document.getElementById("predValue").textContent = cityData.next_hour_aqi;
   document.getElementById("predValue").className = `focus-text ${cityData.next_hour_css}`;
-  document.getElementById("predLabel").textContent = " " + cityData.next_hour_label;
+  document.getElementById("predLabel").textContent = msg.prediction_note || cityData.next_hour_label;
   
   // Traffic
   const t = cityData.traffic || "Medium";
@@ -127,19 +131,20 @@ function updateHeroAndIntel(cityData) {
   trafficText.className = `focus-text traffic-${t.toLowerCase()}`;
   trafficIndicator.className = `traffic-dot traffic-${t.toLowerCase()}-dot`;
   
-  // Alerts
+  // Alerts (uses structured title for alert-level severity)
   const alertCard = document.getElementById("cardAlerts");
   const alertEl = document.getElementById("alertText");
-  if(cityData.alert) {
-    alertEl.textContent = cityData.alert;
+  const severity = msg.severity || "good";
+  if (severity === "unhealthy" || severity === "very-unhealthy" || severity === "hazardous") {
+    alertEl.textContent = msg.title || cityData.alert || "Alert active";
     alertCard.classList.add("has-alert");
   } else {
     alertEl.textContent = "No active alerts";
     alertCard.classList.remove("has-alert");
   }
   
-  // Health Advisory
-  document.getElementById("healthText").textContent = cityData.health_advisory || "—";
+  // Health Advisory (uses structured advice)
+  document.getElementById("healthText").textContent = msg.advice || cityData.health_advisory || "—";
 }
 
 // 3. Update the line chart in Insights view
@@ -227,10 +232,10 @@ document.getElementById("globalCitySelector").addEventListener("change", (e) => 
 
 // Demo Mode Toggle
 document.getElementById("demoToggle").addEventListener("change", (e) => {
-  fetch("/toggle_demo", {
+  fetch("/api/mode", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ demo_mode: e.target.checked })
+    body: JSON.stringify({ demo: e.target.checked })
   });
 });
 
@@ -261,5 +266,311 @@ function switchTab(targetId) {
   }
 }
 
-// Boot
+// ── City Picker Modal Logic ─────────────────────────────────────────────────
+const modal = document.getElementById("cityPickerModal");
+const btnOpen = document.getElementById("openCityPicker");
+const btnCancel = document.getElementById("cityCancel");
+const btnApply = document.getElementById("cityApply");
+const btnSelectAll = document.getElementById("citySelectAll");
+const btnClearAll = document.getElementById("cityClearAll");
+const searchInput = document.getElementById("citySearch");
+const listContainer = document.getElementById("cityListContainer");
+const counterEl = document.getElementById("cityCounter");
+
+// Custom Coord elements
+const customLatInput = document.getElementById("customLat");
+const customLonInput = document.getElementById("customLon");
+const btnAddCustom = document.getElementById("addCustomCityBtn");
+const customMsg = document.getElementById("customCoordMsg");
+
+let catalogData = [];
+let maxCities = 8;
+let tempSelected = new Set(); // holds active selection during modal open
+
+// 1. Fetch Catalog on load
+async function fetchCatalog() {
+  try {
+    const res = await fetch("/api/catalog");
+    const data = await res.json();
+    catalogData = data.cities;
+    maxCities = data.max;
+    
+    // Check localStorage first
+    const saved = localStorage.getItem("selectedCities");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Ensure we don't exceed max if user tampered with localStorage
+      const valid = parsed.slice(0, maxCities);
+      syncBackendCities(valid); // Tell backend what we want
+      catalogData.forEach(c => c.active = valid.includes(c.name));
+    }
+  } catch (err) {
+    console.error("Failed to load catalog:", err);
+  }
+}
+
+// 2. Open Modal
+btnOpen.addEventListener("click", () => {
+  tempSelected = new Set(catalogData.filter(c => c.active).map(c => c.name));
+  renderCatalogList(catalogData);
+  modal.style.display = "flex";
+  searchInput.value = "";
+  searchInput.focus();
+});
+
+// 3. Close Modal
+function closeModal() {
+  modal.style.display = "none";
+}
+btnCancel.addEventListener("click", closeModal);
+
+// 4. Render the List
+function renderCatalogList(citiesToRender) {
+  listContainer.innerHTML = "";
+  
+  // Group by region
+  const grouped = {};
+  citiesToRender.forEach(c => {
+    grouped[c.region] = grouped[c.region] || [];
+    grouped[c.region].push(c);
+  });
+  
+  for (const [region, cities] of Object.entries(grouped)) {
+    if (cities.length === 0) continue;
+    
+    const regionHeading = document.createElement("div");
+    regionHeading.style.cssText = "font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin: 10px 0 4px; font-weight: 700; letter-spacing: 1px;";
+    regionHeading.textContent = region || "Global";
+    listContainer.appendChild(regionHeading);
+    
+    cities.forEach(city => {
+      const isSelected = tempSelected.has(city.name);
+      
+      const opt = document.createElement("div");
+      opt.className = `city-option ${isSelected ? "selected" : ""}`;
+      opt.innerHTML = `
+        <span class="city-name">${city.name}</span>
+        <span class="city-region">${isSelected ? "✓" : "+"}</span>
+      `;
+      
+      opt.addEventListener("click", () => toggleCity(city.name, opt));
+      listContainer.appendChild(opt);
+    });
+  }
+  updateCounter();
+}
+
+function toggleCity(name, el) {
+  if (tempSelected.has(name)) {
+    tempSelected.delete(name);
+    el.classList.remove("selected");
+    el.querySelector(".city-region").textContent = "+";
+  } else {
+    if (tempSelected.size >= maxCities) {
+      alert(`You can only track up to ${maxCities} cities at a time.`);
+      return;
+    }
+    tempSelected.add(name);
+    el.classList.add("selected");
+    el.querySelector(".city-region").textContent = "✓";
+  }
+  updateCounter();
+}
+
+function updateCounter() {
+  counterEl.textContent = `${tempSelected.size}/${maxCities}`;
+  counterEl.style.color = tempSelected.size === maxCities ? "var(--unhealthy)" : "var(--accent)";
+  btnApply.disabled = tempSelected.size === 0;
+  btnApply.style.opacity = tempSelected.size === 0 ? "0.5" : "1";
+}
+
+// 5. Search filtering
+searchInput.addEventListener("input", (e) => {
+  const q = e.target.value.toLowerCase();
+  const filtered = catalogData.filter(c => c.name.toLowerCase().includes(q));
+  renderCatalogList(filtered);
+});
+
+// 6. Bulk actions
+btnSelectAll.addEventListener("click", () => {
+  // Only select up to maxCities from the currently visible filtered list
+  const q = searchInput.value.toLowerCase();
+  const visible = catalogData.filter(c => c.name.toLowerCase().includes(q));
+  
+  for (const c of visible) {
+    if (tempSelected.size >= maxCities) break;
+    tempSelected.add(c.name);
+  }
+  renderCatalogList(visible);
+});
+
+btnClearAll.addEventListener("click", () => {
+  tempSelected.clear();
+  const q = searchInput.value.toLowerCase();
+  const visible = catalogData.filter(c => c.name.toLowerCase().includes(q));
+  renderCatalogList(visible);
+});
+
+// 7. Apply Changes
+btnApply.addEventListener("click", async () => {
+  if (tempSelected.size === 0) return;
+  
+  const selectedArr = Array.from(tempSelected);
+  
+  // 1. Update internal state
+  catalogData.forEach(c => c.active = tempSelected.has(c.name));
+  
+  // 2. Persist to localStorage
+  localStorage.setItem("selectedCities", JSON.stringify(selectedArr));
+  
+  // 3. Clear UI waiting for new data
+  document.getElementById("cityCardsContainer").innerHTML = `
+    <div class="loader">
+      <div class="spinner"></div>
+      <p style="margin-top: 1rem; color: var(--text-secondary);">Switching cities...</p>
+    </div>
+  `;
+  
+  // 4. Clean old global dropdown
+  document.getElementById("globalCitySelector").innerHTML = "";
+  
+  // 5. Tell Backend
+  await syncBackendCities(selectedArr);
+  
+  closeModal();
+});
+
+async function syncBackendCities(citiesList) {
+  try {
+    await fetch("/api/cities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cities: citiesList })
+    });
+  } catch (err) {
+    console.error("Failed to sync cities with backend:", err);
+  }
+}
+
+// ── Custom Coordinate API Logic ───────────────────────────────────────────────
+btnAddCustom.addEventListener("click", async () => {
+  const lat = parseFloat(customLatInput.value);
+  const lon = parseFloat(customLonInput.value);
+  
+  if (isNaN(lat) || isNaN(lon)) {
+    showCustomMsg("Please enter valid numeric coordinates", true);
+    return;
+  }
+  
+  if (tempSelected.size >= maxCities) {
+    showCustomMsg(`You can only track up to ${maxCities} cities at a time. Deselect one first.`, true);
+    return;
+  }
+
+  // Loading state
+  btnAddCustom.disabled = true;
+  btnAddCustom.textContent = "...";
+  showCustomMsg("Locating...", false);
+  
+  try {
+    const res = await fetch("/api/custom_city", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat, lon })
+    });
+    
+    const data = await res.json();
+    
+    if (!res.ok) {
+      showCustomMsg(data.error || "Failed to locate coordinates", true);
+    } else {
+      // Success! Add to local catalog if not already there
+      const exists = catalogData.find(c => c.name === data.name);
+      if (!exists) {
+        catalogData.push({
+          name: data.name,
+          region: data.region || "Custom",
+          active: true
+        });
+      } else {
+        exists.active = true;
+      }
+      
+      // Auto-select it
+      tempSelected.add(data.name);
+      
+      // Re-render
+      searchInput.value = "";
+      renderCatalogList(catalogData);
+      
+      // Feedback
+      showCustomMsg(`Added ${data.name}!`, false);
+      customLatInput.value = "";
+      customLonInput.value = "";
+    }
+  } catch (err) {
+    showCustomMsg("Network error connecting to backend", true);
+  } finally {
+    btnAddCustom.disabled = false;
+    btnAddCustom.textContent = "Add";
+  }
+});
+
+function showCustomMsg(text, isError) {
+  customMsg.textContent = text;
+  customMsg.className = `custom-coord-msg ${isError ? 'error' : ''}`;
+  customMsg.style.display = 'block';
+  if (!isError) setTimeout(() => customMsg.style.display = 'none', 3000);
+}
+
+// ── Boot ────────────────────────────────────────────────────────────────────
 initChart();
+fetchCatalog();
+
+// ── REST Polling Fallback ───────────────────────────────────────────────────
+// Fetches /api/current as a backup in case the WebSocket is slow or broken.
+// Auto-disables once WebSocket delivers data.
+let _wsReceivedData = false;
+let _restPollTimer = null;
+
+socket.on("city_update", () => { _wsReceivedData = true; });
+
+async function _restPoll() {
+  if (_wsReceivedData) {
+    // WebSocket is working — stop REST polling
+    if (_restPollTimer) { clearInterval(_restPollTimer); _restPollTimer = null; }
+    return;
+  }
+  try {
+    const res = await fetch("/api/current");
+    const cities = await res.json();
+    if (cities && cities.length > 0) {
+      cities.forEach(c => { allCitiesData[c.city] = c; });
+
+      const sel = document.getElementById("globalCitySelector");
+      if (sel.options.length === 0) {
+        cities.forEach(c => {
+          const opt = document.createElement("option");
+          opt.value = c.city;
+          opt.textContent = c.city;
+          sel.appendChild(opt);
+        });
+        selectedCity = cities.sort((a,b) => b.aqi - a.aqi)[0].city;
+        sel.value = selectedCity;
+      }
+
+      updateDashboardCards(cities);
+      if (document.getElementById("insightsTab").classList.contains("active")) {
+        refreshInsightsView();
+      }
+    }
+  } catch (err) {
+    console.log("[REST fallback] Fetch error:", err);
+  }
+}
+
+// Initial fetch on page load (get any cached data immediately)
+_restPoll();
+
+// Poll every 5s as fallback until WebSocket delivers
+_restPollTimer = setInterval(_restPoll, 5000);

@@ -41,12 +41,50 @@ def predict_next_hour(history: list[dict]) -> float | None:
     """
     Given a list of recent raw sensor reading dicts (oldest → newest),
     returns the predicted AQI value for ~1 hour ahead.
-    Returns None if insufficient history.
+    Returns None if insufficient real history (Warm-Up Phase).
     """
-    feats = extract_features(history)
+    real_history = [r for r in history if r.get("is_real", True)]
+    
+    # Warm-Up Threshold: require at least 12 real points (1 minute of data) before ML prediction
+    if len(real_history) < 12:
+        return None
+        
+    feats = extract_features(real_history)
     if feats is None:
         return None
     model = _load_model()
+    with _model_lock:
+        pred = model.predict(feats.reshape(1, -1))[0]
+    return round(float(max(0, min(500, pred))), 1)
+
+
+def predict_from_features(features_dict: dict) -> float | None:
+    """
+    Predict AQI from pre-computed feature dict (used by Spark processor).
+    Accepts a dict with pollutant values and builds a minimal feature vector.
+    Returns predicted AQI or None if features are insufficient.
+    """
+    # Build a minimal history-like structure for extract_features
+    fake_history = []
+    for _ in range(3):
+        fake_history.append({
+            "pm25": features_dict.get("pm25", 0),
+            "pm10": features_dict.get("pm10", 0),
+            "no2":  features_dict.get("no2", 0),
+            "o3":   features_dict.get("o3", 0),
+            "co":   features_dict.get("co", 0),
+            "so2":  features_dict.get("so2", 0),
+            "timestamp": features_dict.get("timestamp", ""),
+        })
+
+    feats = extract_features(fake_history)
+    if feats is None:
+        return None
+
+    model = _load_model()
+    if model is None:
+        return None
+
     with _model_lock:
         pred = model.predict(feats.reshape(1, -1))[0]
     return round(float(max(0, min(500, pred))), 1)

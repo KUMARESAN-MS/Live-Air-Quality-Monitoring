@@ -26,6 +26,8 @@
     </nav>
 
     <div class="app-controls">
+      <button class="city-picker-btn" id="openCityPicker">🌍 Change Cities</button>
+
       <select id="globalCitySelector" class="city-dropdown" style="display: none;">
         <!-- populated by JS only when in Insights Tab -->
       </select>
@@ -122,6 +124,38 @@
       </div>
     </section>
   </main>
+
+  <!-- ── City Picker Modal ────────────────────────────────── -->
+  <div class="modal-overlay" id="cityPickerModal" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>🌍 Select Cities</h2>
+        <span class="modal-counter" id="cityCounter">0/8</span>
+      </div>
+      <input type="text" class="modal-search" id="citySearch" placeholder="Search cities..." autocomplete="off">
+      
+      <!-- Custom Coordinate Form -->
+      <div class="custom-coord-form">
+        <p class="custom-coord-title">Or add a custom location</p>
+        <div class="custom-coord-inputs">
+          <input type="number" id="customLat" placeholder="Latitude (e.g., 40.71)" step="0.01">
+          <input type="number" id="customLon" placeholder="Longitude (e.g., -74.00)" step="0.01">
+          <button id="addCustomCityBtn" class="modal-btn primary">Add</button>
+        </div>
+        <p id="customCoordMsg" class="custom-coord-msg"></p>
+      </div>
+
+      <div class="modal-body" id="cityListContainer">
+        <!-- populated by JS -->
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn secondary" id="citySelectAll">Select All</button>
+        <button class="modal-btn secondary" id="cityClearAll">Clear All</button>
+        <button class="modal-btn primary" id="cityApply">Apply</button>
+        <button class="modal-btn ghost" id="cityCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
 
   <script src="/static/dashboard.js"></script>
 </body>

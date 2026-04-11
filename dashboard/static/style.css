@@ -260,6 +260,103 @@ input:checked + .slider:before { transform: translateX(18px); background-color: 
 .spinner { width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--accent); animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── City Picker Modal ────────────────────────────────────────────────────── */
+.city-picker-btn {
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--text-primary); font-family: inherit; font-size: 0.9rem; font-weight: 500;
+  padding: 8px 16px; border-radius: 20px;
+  cursor: pointer; transition: all var(--transition);
+}
+.city-picker-btn:hover { background: var(--bg-card-hover); border-color: var(--border-hover); }
+
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 999;
+  background: rgba(8, 10, 15, 0.85); backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; animation: fadeIn 0.2s forwards;
+}
+.modal-card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); width: 90%; max-width: 500px;
+  max-height: 85vh; display: flex; flex-direction: column;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  transform: translateY(20px); opacity: 0; animation: slideUp 0.3s forwards ease-out;
+}
+.modal-header {
+  padding: 1.5rem; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.modal-header h2 { font-size: 1.25rem; font-weight: 600; }
+.modal-counter {
+  background: var(--bg-card); padding: 4px 10px;
+  border-radius: 12px; font-size: 0.85rem; font-weight: 600; color: var(--accent);
+}
+.modal-search {
+  margin: 1rem 1.5rem 0; padding: 12px 16px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-md); color: #fff; font-family: inherit; font-size: 0.95rem;
+  outline: none; transition: border-color var(--transition);
+}
+.modal-search:focus { border-color: var(--accent); }
+.modal-body {
+  padding: 1rem 1.5rem; overflow-y: auto; flex: 1;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.city-option {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  cursor: pointer; transition: all var(--transition);
+}
+.city-option:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }
+.city-option.selected { border-color: var(--accent); background: rgba(59, 130, 246, 0.1); }
+.city-option input { display: none; }
+.city-region { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+
+.custom-coord-form {
+  margin: 1rem 1.5rem 0; padding: 12px 16px;
+  background: var(--bg-card); border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+.custom-coord-title {
+  font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px; font-weight: 500;
+}
+.custom-coord-inputs {
+  display: flex; gap: 8px;
+}
+.custom-coord-inputs input {
+  flex: 1; padding: 8px 12px;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: #fff; font-family: inherit; font-size: 0.9rem;
+  outline: none; transition: border-color var(--transition);
+}
+.custom-coord-inputs input:focus { border-color: var(--accent); }
+.custom-coord-msg {
+  font-size: 0.8rem; margin-top: 6px; color: var(--good); display: none;
+}
+.custom-coord-msg.error {
+  color: var(--unhealthy); display: block;
+}
+
+.modal-footer {
+  padding: 1.25rem 1.5rem; border-top: 1px solid var(--border);
+  display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;
+}
+.modal-btn {
+  padding: 8px 16px; border-radius: var(--radius-sm); font-family: inherit;
+  font-size: 0.9rem; font-weight: 500; cursor: pointer; border: none;
+  transition: all var(--transition);
+}
+.modal-btn.primary { background: var(--accent); color: #fff; }
+.modal-btn.primary:hover { background: #2563eb; }
+.modal-btn.secondary { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); }
+.modal-btn.secondary:hover { background: var(--bg-card-hover); }
+.modal-btn.ghost { background: transparent; color: var(--text-secondary); }
+.modal-btn.ghost:hover { color: #fff; }
+
+@keyframes fadeIn { to { opacity: 1; } }
+@keyframes slideUp { to { transform: translateY(0); opacity: 1; } }
+
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .intel-grid { grid-template-columns: 1fr; }

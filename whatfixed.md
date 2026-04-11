@@ -58,3 +58,30 @@ This document summarizes the issues found in the air quality monitoring system a
 2. **Producer**: `.\venv\Scripts\python.exe producer\aqi_producer.py`
 3. **Dashboard**: `.\venv\Scripts\python.exe dashboard\app.py`
 4. **Access**: [http://localhost:5001](http://localhost:5001)
+
+---
+
+## 🛡️ Phase 2: Production-Grade Stability (Latest)
+
+1. **Prediction Anomaly & Synthetic Contamination**
+   - **Issue**: New cities showed high AQI (~150) even when current air was good.
+   - **Cause**: Synthetic "pre-fill" data used a default high-pollution profile that biased the ML model before real data arrived.
+   - **Fix**: Implemented **"Cold Start Mode"**. Synthetic pre-fills were removed. New cities now start with an empty history for pure accuracy.
+
+2. **ML Data Validation Layer**
+   - **Issue**: The ML model couldn't distinguish between real API data and simulation fallback.
+   - **Fix**: Added `is_real: True/False` tagging. The ML predictor now explicitly **filters out** synthetic data from its calculations.
+
+3. **Warm-Up Thresholds & Hybrid Prediction**
+   - **Issue**: ML models are unstable with only 1 or 2 data points.
+   - **Fix**: Added a **12-reading (1 minute) Warm-Up Threshold**. During this period, the system uses a **Linear Trend Fallback** (Moving Average) before switching to full ML inference.
+
+4. **Dynamic City Syncing**
+   - **Issue**: Adding a city in the dashboard didn't always update the background producer/consumer instantly.
+   - **Fix**: Centralized city management in `config/active_cities.json`. All background processes now reload the JSON every 10 seconds to stay in perfect sync.
+
+5. **API Rate Limit & "Spike" Logic**
+   - **Issue**: Constant "Hazardous 500.0" spikes and OpenWeather connection errors.
+   - **Fix**:
+      - Increased polling interval from **5s to 10s** (staying under the 60 req/min limit).
+      - Closed mathematical **gaps** in the EPA breakpoint table that were causing fallback "noise."
