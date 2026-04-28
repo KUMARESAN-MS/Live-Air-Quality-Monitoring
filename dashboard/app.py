@@ -46,7 +46,8 @@ def index():
 @app.route("/api/current")
 def api_current():
     """REST snapshot — useful for initial page load."""
-    return jsonify(list(city_state.values()))
+    active_cities = [c for c in city_state.values() if c.get("city") in settings.CITIES]
+    return jsonify(active_cities)
 
 @app.route("/api/mode", methods=["POST"])
 def api_mode():
@@ -177,7 +178,7 @@ def _push_loop():
     socketio.sleep(3)  # initial delay — use socketio.sleep, NOT time.sleep
     push_count = 0
     while True:
-        cities = list(city_state.values())
+        cities = [c for c in city_state.values() if c.get("city") in settings.CITIES]
         if cities:
             socketio.emit("city_update", cities)
             push_count += 1
