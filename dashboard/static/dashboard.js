@@ -4,6 +4,32 @@ const socket = io();
 let allCitiesData = {};
 let selectedCity = null;
 let aqiChart = null;
+let _dropdownPopulated = false;   // guard against duplicate options
+
+// ── Toast Notifications ─────────────────────────────────────────────────────
+function showToast(message, type = "warning", duration = 3500) {
+  const container = document.getElementById("toastContainer");
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add("hiding");
+    toast.addEventListener("animationend", () => toast.remove());
+  }, duration);
+}
+
+// ── Connection Status Indicator ─────────────────────────────────────────────
+const connDot = document.getElementById("connStatus");
+
+socket.on("connect", () => {
+  connDot.className = "conn-dot connected";
+  connDot.title = "Connected — receiving live data";
+});
+socket.on("disconnect", () => {
+  connDot.className = "conn-dot disconnected";
+  connDot.title = "Disconnected — attempting to reconnect…";
+});
 
 // ── Chart Initialization ────────────────────────────────────────────────────
 function initChart() {
@@ -31,9 +57,13 @@ function initChart() {
         }
       },
       scales: {
-        x: { grid: { color: "rgba(255,255,255,0.05)" } },
+        x: { 
+          title: { display: true, text: "Time (Recent Readings)", color: "rgba(255,255,255,0.5)", font: { size: 11, weight: '500' } },
+          grid: { color: "rgba(255,255,255,0.04)" } 
+        },
         y: { 
-          grid: { color: "rgba(255,255,255,0.05)" },
+          title: { display: true, text: "Air Quality Index (AQI)", color: "rgba(255,255,255,0.5)", font: { size: 11, weight: '500' } },
+          grid: { color: "rgba(255,255,255,0.04)" },
           beginAtZero: true,
           suggestedMax: 200
         }
@@ -44,11 +74,28 @@ function initChart() {
 
 // ── Render Logic ────────────────────────────────────────────────────────────
 
+// Safe accessor — returns "—" for null/undefined values
+function safeVal(val, suffix) {
+  if (val == null || val === "" || val === undefined) return "—";
+  return suffix ? `${val}${suffix}` : val;
+}
+
 // 1. Update the Main Dashboard Grid (Tab 1)
 function updateDashboardCards(cities) {
   const container = document.getElementById("cityCardsContainer");
   if(container.querySelector(".loader")) container.innerHTML = "";
   
+  // Build a set of current city names for stale-card cleanup
+  const activeCityNames = new Set(cities.map(c => c.city));
+
+  // Remove stale cards (cities that are no longer in the active set)
+  container.querySelectorAll(".city-card").forEach(card => {
+    const cardCity = card.id.replace("card-", "");
+    if (!activeCityNames.has(cardCity)) {
+      card.remove();
+    }
+  });
+
   // Sort cities by priority score (worst-first)
   const sorted = [...cities].sort((a, b) => (b.priority?.score || 0) - (a.priority?.score || 0));
 
@@ -75,17 +122,17 @@ function updateDashboardCards(cities) {
     // Update contents
     const pri = city.priority || {};
     const priBadge = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}[pri.priority] || "⚪";
-    card.className = `city-card ${city.css_class}`;
+    card.className = `city-card ${city.css_class || ""}`;
     card.innerHTML = `
       <div class="card-header">
         <span class="city-name">${city.city}</span>
         <span class="priority-badge" title="Priority: ${pri.priority || 'unknown'}">${priBadge}</span>
       </div>
-      <div class="aqi-value ${city.css_class}">${city.aqi}</div>
-      <div class="category-badge ${city.css_class}">${city.category}</div>
+      <div class="aqi-value ${city.css_class || ""}">${safeVal(city.aqi)}</div>
+      <div class="category-badge ${city.css_class || ""}">${safeVal(city.category)}</div>
       <div class="pollutants">
-        <span class="chip">PM2.5 <b>${city.pm25}</b></span>
-        <span class="chip">PM10 <b>${city.pm10}</b></span>
+        <span class="chip">PM2.5 <b>${safeVal(city.pm25)}</b></span>
+        <span class="chip">PM10 <b>${safeVal(city.pm10)}</b></span>
       </div>
     `;
   });
@@ -99,29 +146,33 @@ function updateHeroAndIntel(cityData) {
   const timeEl = document.getElementById("heroTime");
   const trendEl = document.getElementById("heroTrend");
   
-  aqiEl.textContent = cityData.aqi;
-  aqiEl.className = `aqi-num ${cityData.css_class}`;
-  catEl.textContent = cityData.category;
-  catEl.className = `category-badge ${cityData.css_class}`;
-  trendEl.textContent = cityData.trend;
+  aqiEl.textContent = safeVal(cityData.aqi);
+  aqiEl.className = `aqi-num ${cityData.css_class || ""}`;
+  catEl.textContent = safeVal(cityData.category);
+  catEl.className = `category-badge ${cityData.css_class || ""}`;
+  trendEl.textContent = cityData.trend || "→";
   
   if (cityData.trend === "↑") trendEl.className = "trend-icon trend-up";
   else if (cityData.trend === "↓") trendEl.className = "trend-icon trend-down";
   else trendEl.className = "trend-icon trend-flat";
   
-  const d = new Date(cityData.timestamp);
-  timeEl.textContent = `Updated: ${d.toLocaleTimeString()}`;
+  if (cityData.timestamp) {
+    const d = new Date(cityData.timestamp);
+    timeEl.textContent = `Updated: ${d.toLocaleTimeString()}`;
+  } else {
+    timeEl.textContent = "--:--";
+  }
 
   // --- Intel Grid (Structured Messages) ---
   const msg = cityData.message || {};
 
   // AI Insight (now uses structured message)
-  document.getElementById("insightText").textContent = msg.summary || cityData.insight || "Waiting for data...";
+  document.getElementById("insightText").textContent = msg.summary || cityData.insight || "Waiting for data…";
   
   // Prediction (uses structured prediction_note)
-  document.getElementById("predValue").textContent = cityData.next_hour_aqi;
-  document.getElementById("predValue").className = `focus-text ${cityData.next_hour_css}`;
-  document.getElementById("predLabel").textContent = msg.prediction_note || cityData.next_hour_label;
+  document.getElementById("predValue").textContent = safeVal(cityData.next_hour_aqi);
+  document.getElementById("predValue").className = `focus-text ${cityData.next_hour_css || ""}`;
+  document.getElementById("predLabel").textContent = msg.prediction_note || cityData.next_hour_label || "";
   
   // Traffic
   const t = cityData.traffic || "Medium";
@@ -152,34 +203,37 @@ function updateChart(cityData) {
   if (!aqiChart) return;
   const history = cityData.history_aqi || [];
   
-  aqiChart.data.labels = history.map((_, i) => `-${history.length - i}`);
+  aqiChart.data.labels = history.map((_, i) => {
+    const past = history.length - 1 - i;
+    return past === 0 ? "Now" : `-${past}`;
+  });
   
   // Create gradient
   const ctx = aqiChart.canvas.getContext("2d");
-  const grad = ctx.createLinearGradient(0, 0, 0, 300);
+  const grad = ctx.createLinearGradient(0, 0, 0, 280);
   
   // Get CSS variable color based on category class
   const dummyEl = document.createElement("div");
-  dummyEl.className = cityData.css_class;
+  dummyEl.className = cityData.css_class || "";
   document.body.appendChild(dummyEl);
   let color = getComputedStyle(dummyEl).color;
   document.body.removeChild(dummyEl);
   if(!color || color === 'rgba(0, 0, 0, 0)') color = "#3b82f6";
   
   // Convert standard hex/rgb to rgba for gradient
-  grad.addColorStop(0, color.replace('rgb', 'rgba').replace(')', ', 0.25)'));
-  grad.addColorStop(1, "rgba(21, 27, 41, 0)");
+  grad.addColorStop(0, color.replace('rgb', 'rgba').replace(')', ', 0.2)'));
+  grad.addColorStop(1, "rgba(23, 29, 43, 0)");
 
   aqiChart.data.datasets = [{
     label: "AQI",
     data: history,
     borderColor: color,
     backgroundColor: grad,
-    borderWidth: 3,
-    pointBackgroundColor: '#151b29',
+    borderWidth: 2.5,
+    pointBackgroundColor: '#171d2b',
     pointBorderColor: color,
     pointRadius: 0,
-    pointHoverRadius: 6,
+    pointHoverRadius: 5,
     fill: true,
     tension: 0.4
   }];
@@ -193,6 +247,19 @@ function refreshInsightsView() {
   }
 }
 
+// ── Populate / Rebuild Dropdown ─────────────────────────────────────────────
+function rebuildDropdown(cities) {
+  const sel = document.getElementById("globalCitySelector");
+  sel.innerHTML = "";
+  cities.forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c.city;
+    opt.textContent = c.city;
+    sel.appendChild(opt);
+  });
+  _dropdownPopulated = true;
+}
+
 // ── WebSockets ──────────────────────────────────────────────────────────────
 socket.on("city_update", (cities) => {
   if (!cities || cities.length === 0) return;
@@ -200,17 +267,12 @@ socket.on("city_update", (cities) => {
   // Stash data
   cities.forEach(c => { allCitiesData[c.city] = c; });
   
-  // Populate dropdown once
+  // Populate dropdown once (or if it was cleared after a city change)
   const sel = document.getElementById("globalCitySelector");
-  if (sel.options.length === 0) {
-    cities.forEach(c => {
-      const opt = document.createElement("option");
-      opt.value = c.city;
-      opt.textContent = c.city;
-      sel.appendChild(opt);
-    });
-    // Set initial selection
-    selectedCity = cities.sort((a,b) => b.aqi - a.aqi)[0].city;
+  if (!_dropdownPopulated || sel.options.length === 0) {
+    rebuildDropdown(cities);
+    // Set initial selection to worst-AQI city
+    selectedCity = [...cities].sort((a,b) => (b.aqi || 0) - (a.aqi || 0))[0].city;
     sel.value = selectedCity;
   }
   
@@ -259,6 +321,16 @@ function switchTab(targetId) {
   const sel = document.getElementById("globalCitySelector");
   if (targetId === "insightsTab") {
     sel.style.display = "block";  // Show dropdown in top bar
+
+    // Auto-select worst city if nothing is selected yet
+    if (!selectedCity || !allCitiesData[selectedCity]) {
+      const available = Object.values(allCitiesData);
+      if (available.length > 0) {
+        selectedCity = available.sort((a,b) => (b.aqi || 0) - (a.aqi || 0))[0].city;
+        sel.value = selectedCity;
+      }
+    }
+
     refreshInsightsView();
     if(aqiChart) setTimeout(() => aqiChart.resize(), 50); // Resize fix
   } else {
@@ -324,6 +396,20 @@ function closeModal() {
 }
 btnCancel.addEventListener("click", closeModal);
 
+// Close on Escape key
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && modal.style.display !== "none") {
+    closeModal();
+  }
+});
+
+// Close on backdrop click (click on overlay, not modal-card)
+modal.addEventListener("click", (e) => {
+  if (e.target === modal) {
+    closeModal();
+  }
+});
+
 // 4. Render the List
 function renderCatalogList(citiesToRender) {
   listContainer.innerHTML = "";
@@ -339,7 +425,7 @@ function renderCatalogList(citiesToRender) {
     if (cities.length === 0) continue;
     
     const regionHeading = document.createElement("div");
-    regionHeading.style.cssText = "font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; margin: 10px 0 4px; font-weight: 700; letter-spacing: 1px;";
+    regionHeading.style.cssText = "font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin: 10px 0 4px; font-weight: 700; letter-spacing: 1px;";
     regionHeading.textContent = region || "Global";
     listContainer.appendChild(regionHeading);
     
@@ -367,7 +453,7 @@ function toggleCity(name, el) {
     el.querySelector(".city-region").textContent = "+";
   } else {
     if (tempSelected.size >= maxCities) {
-      alert(`You can only track up to ${maxCities} cities at a time.`);
+      showToast(`Maximum ${maxCities} cities allowed. Deselect one first.`, "warning");
       return;
     }
     tempSelected.add(name);
@@ -427,16 +513,22 @@ btnApply.addEventListener("click", async () => {
   document.getElementById("cityCardsContainer").innerHTML = `
     <div class="loader">
       <div class="spinner"></div>
-      <p style="margin-top: 1rem; color: var(--text-secondary);">Switching cities...</p>
+      <p style="margin-top: 1rem; color: var(--text-secondary);">Switching cities…</p>
     </div>
   `;
   
-  // 4. Clean old global dropdown
+  // 4. Reset dropdown so it rebuilds on next data push
   document.getElementById("globalCitySelector").innerHTML = "";
+  _dropdownPopulated = false;
   
-  // 5. Tell Backend
+  // 5. Clear stale allCitiesData
+  allCitiesData = {};
+  selectedCity = null;
+  
+  // 6. Tell Backend
   await syncBackendCities(selectedArr);
   
+  showToast(`Now monitoring ${selectedArr.length} cities`, "success", 2500);
   closeModal();
 });
 
@@ -463,14 +555,14 @@ btnAddCustom.addEventListener("click", async () => {
   }
   
   if (tempSelected.size >= maxCities) {
-    showCustomMsg(`You can only track up to ${maxCities} cities at a time. Deselect one first.`, true);
+    showCustomMsg(`Maximum ${maxCities} cities. Deselect one first.`, true);
     return;
   }
 
   // Loading state
   btnAddCustom.disabled = true;
-  btnAddCustom.textContent = "...";
-  showCustomMsg("Locating...", false);
+  btnAddCustom.textContent = "…";
+  showCustomMsg("Locating…", false);
   
   try {
     const res = await fetch("/api/custom_city", {
@@ -548,14 +640,9 @@ async function _restPoll() {
       cities.forEach(c => { allCitiesData[c.city] = c; });
 
       const sel = document.getElementById("globalCitySelector");
-      if (sel.options.length === 0) {
-        cities.forEach(c => {
-          const opt = document.createElement("option");
-          opt.value = c.city;
-          opt.textContent = c.city;
-          sel.appendChild(opt);
-        });
-        selectedCity = cities.sort((a,b) => b.aqi - a.aqi)[0].city;
+      if (!_dropdownPopulated || sel.options.length === 0) {
+        rebuildDropdown(cities);
+        selectedCity = [...cities].sort((a,b) => (b.aqi || 0) - (a.aqi || 0))[0].city;
         sel.value = selectedCity;
       }
 

@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <title>Real-Time AQI Monitor</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Live Air Quality Index monitoring dashboard with real-time AQI data, AI insights, and health advisories for cities worldwide.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌫️</text></svg>">
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -17,24 +19,25 @@
     <div class="logo">
       <span class="logo-icon">🌫️</span>
       <h1>AQI Monitor</h1>
+      <span class="conn-dot" id="connStatus" title="Connection status"></span>
     </div>
     
     <!-- Tab Navigation -->
-    <nav class="app-nav">
+    <nav class="app-nav" aria-label="Main navigation">
       <button class="tab-btn active" data-target="dashboardTab">Dashboard</button>
       <button class="tab-btn" data-target="insightsTab" id="navInsights">Insights</button>
     </nav>
 
     <div class="app-controls">
-      <button class="city-picker-btn" id="openCityPicker">🌍 Change Cities</button>
+      <button class="city-picker-btn" id="openCityPicker" aria-label="Select cities to monitor">🌍 <span>Change Cities</span></button>
 
-      <select id="globalCitySelector" class="city-dropdown" style="display: none;">
+      <select id="globalCitySelector" class="city-dropdown" style="display: none;" aria-label="Select city for insights">
         <!-- populated by JS only when in Insights Tab -->
       </select>
       
       <div class="mode-toggle">
         <span class="mode-label">Demo</span>
-        <label class="switch">
+        <label class="switch" aria-label="Toggle demo mode">
           <input type="checkbox" id="demoToggle">
           <span class="slider round"></span>
         </label>
@@ -49,7 +52,7 @@
       <div class="cards-grid" id="cityCardsContainer">
         <div class="loader">
           <div class="spinner"></div>
-          <p style="margin-top: 1rem; color: var(--text-secondary);">Connecting to data stream...</p>
+          <p style="margin-top: 1rem; color: var(--text-secondary);">Connecting to data stream…</p>
         </div>
       </div>
     </section>
@@ -66,7 +69,7 @@
              <span id="heroTrend" class="trend-icon">→</span>
            </div>
            <div class="hero-meta">
-             <span id="heroCategory" class="category-badge">Loading...</span>
+             <span id="heroCategory" class="category-badge">Loading…</span>
              <span class="timestamp" id="heroTime">--:--</span>
            </div>
         </div>
@@ -82,7 +85,7 @@
           <div class="card-icon">🧠</div>
           <div class="card-content">
             <h4>AI Insight</h4>
-            <p id="insightText">Waiting for data...</p>
+            <p id="insightText">Waiting for data…</p>
           </div>
         </div>
 
@@ -114,10 +117,10 @@
         </div>
 
         <div class="intel-card full-width" id="cardAdvisory">
-          <div class="card-icon" style="background: rgba(239, 68, 68, 0.1);">❤️</div>
+          <div class="card-icon" style="background: rgba(239, 68, 68, 0.08);">❤️</div>
           <div class="card-content">
             <h4>Health Advisory</h4>
-            <p id="healthText" style="color: var(--text-primary); font-size: 0.9rem;">—</p>
+            <p id="healthText" style="color: var(--text-primary); font-size: 0.88rem;">—</p>
           </div>
         </div>
         
@@ -132,7 +135,7 @@
         <h2>🌍 Select Cities</h2>
         <span class="modal-counter" id="cityCounter">0/8</span>
       </div>
-      <input type="text" class="modal-search" id="citySearch" placeholder="Search cities..." autocomplete="off">
+      <input type="text" class="modal-search" id="citySearch" placeholder="Search cities…" autocomplete="off">
       
       <!-- Custom Coordinate Form -->
       <div class="custom-coord-form">
@@ -156,6 +159,9 @@
       </div>
     </div>
   </div>
+
+  <!-- ── Toast Notification Container ───────────────────── -->
+  <div class="toast-container" id="toastContainer"></div>
 
   <script src="/static/dashboard.js"></script>
 </body>
